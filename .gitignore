@@ -1,0 +1,23 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/vulkanized
+vulkanized.so
+vulkanized.dylib
+vulkanized.dll
+vulkanized.a
+vulkanized.lib
+vulkanized-test-*
+*.exe
+*.pdb
+*.o
+*.obj
+*.lst
+
+glfw3*
+/shaders/**.spv
+
+# Visual Studio Code files
+.vs
+.vscode

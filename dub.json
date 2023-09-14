@@ -1,0 +1,18 @@
+{
+	"authors": [
+		"Josh Hannaford"
+	],
+	"copyright": "Copyright © 2023, Josh Hannaford",
+	"dependencies": {
+		"bindbc-glfw": "~>1.1.0",
+		"erupted": "~>2.1.98",
+		"optional": "~>1.3.0"
+	},
+	"description": "A basic vulkan setup with DLnag",
+	"license": "proprietary",
+	"name": "vulkanized",
+	"versions": [
+		"GLFW_33"
+	],
+	"buildOptions-windows": ["debugInfoC"]
+}
