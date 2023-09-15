@@ -13,13 +13,19 @@ import erupted;
 import erupted.dispatch_device;
 import erupted.vulkan_lib_loader;
 
-import bindbc.glfw;
-import loader = bindbc.loader.sharedlib;
+import arsd.simpledisplay;
 import optional;
 import utils;
 import std.logger.core;
 
-mixin(bindGLFW_Vulkan);
+import erupted.platform_extensions;
+
+static if(UsingSimpledisplayX11) {
+	mixin Platform_Extensions!USE_PLATFORM_XLIB_KHR;
+} else version(Windows) {
+	import core.sys.windows.windows;
+	mixin Platform_Extensions!USE_PLATFORM_WIN32_KHR;
+}
 
 private static const uint WIDTH = 800;
 private static const uint HEIGHT = 600;
@@ -37,7 +43,7 @@ private void assertVk(VkResult result)
   enforce(result == VK_SUCCESS, "Failed to perform vulkan operation.");
 }
 
-extern (Windows) static VkBool32 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+extern (System) static VkBool32 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   VkDebugUtilsMessageTypeFlagsEXT messageType,
   const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) nothrow @nogc
 {
@@ -123,7 +129,7 @@ final class HelloTriangleApp
   }
 
 private:
-  GLFWwindow* mWindow;
+  SimpleWindow mWindow;
   VkInstance mInstance;
   VkDebugUtilsMessengerEXT mDebugMessenger;
   VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
@@ -150,48 +156,9 @@ private:
   VkSemaphore mRenderFinishedSemaphore;
   VkFence mInFlightFence;
 
-  bool loadGLFWLib()
-  {
-    auto ret = loadGLFW();
-    loadGLFW_Vulkan();
-
-    if (ret != glfwSupport)
-    {
-      // Log the error info
-      foreach (info; loader.errors)
-      {
-        writeln("Error loading GLFW: ", info.error);
-      }
-
-      string msg;
-      if (ret == GLFWSupport.noLibrary)
-      {
-        msg = "This application requires the GLFW library.";
-      }
-      else
-      {
-        msg = "The version of the GLFW library on your system is too low. Please upgrade.";
-      }
-
-      writeln(msg);
-      return false;
-    }
-
-    return true;
-  }
-
   void initWindow()
   {
-    enforce(loadGLFWLib(), "Failed to load GLFW shared library.");
-    glfwInit();
-
-    auto res = glfwVulkanSupported();
-    enforce(res != GLFW_FALSE, "Vulkan is not supported by GLFW");
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    mWindow = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", null, null);
+    mWindow = new SimpleWindow(WIDTH, HEIGHT, "Vulkan", Resizability.allowResizing);
   }
 
   void initVulkan()
@@ -220,11 +187,9 @@ private:
 
   void mainLoop()
   {
-    while (!glfwWindowShouldClose(mWindow))
-    {
-      glfwPollEvents();
-      drawFrame();
-    }
+    mWindow.eventLoop(1000 / 60, () {
+	drawFrame();
+    });
 
     mDevice.DeviceWaitIdle();
   }
@@ -260,9 +225,6 @@ private:
     vkDestroyInstance(mInstance, null);
 
     assert(freeVulkanLib());
-
-    glfwDestroyWindow(mWindow);
-    glfwTerminate();
   }
 
   void createInstance()
@@ -329,7 +291,23 @@ private:
 
   void createSurface()
   {
-    assertVk(glfwCreateWindowSurface(mInstance, mWindow, null, &mSurface));
+
+                version(Windows) {
+                        VkWin32SurfaceCreateInfoKHR createInfo;
+                        createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+                        createInfo.hwnd = this.mWindow.hwnd;
+                        import core.sys.windows.windows;
+                        createInfo.hinstance = GetModuleHandle(null);
+                        if (vkCreateWin32SurfaceKHR(mInstance, &createInfo, null, &mSurface) != VK_SUCCESS)
+                                throw new Exception("surface creation");
+                } else static if(UsingSimpledisplayX11) {
+                        VkXlibSurfaceCreateInfoKHR createInfo;
+                        createInfo.window = mWindow.window;
+                        createInfo.dpy = XDisplayConnection.get;
+                        if (vkCreateXlibSurfaceKHR(mInstance, &createInfo, null, &mSurface) != VK_SUCCESS)
+                                throw new Exception("surface creation");
+
+                }
   }
 
   void pickPhysicalDevice()
@@ -806,8 +784,7 @@ private:
       return capabilities.currentExtent;
     }
 
-    int width, height;
-    glfwGetFramebufferSize(mWindow, &width, &height);
+    int width = mWindow.width, height = mWindow.height;
 
     auto actualExtent = VkExtent2D(width, height);
 
@@ -968,11 +945,12 @@ private:
 
 const(char*)[] getRequiredExtensions()
 {
-  uint32_t glfwExtensionCount = 0;
-  const(char*)* glfwExtensions;
-  glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-  const(char*)[] extensions = glfwExtensions[0 .. glfwExtensionCount].dup;
+  const(char*)[] extensions;
+  extensions ~= "VK_KHR_surface";
+  static if(UsingSimpledisplayX11)
+  	extensions ~= "VK_KHR_xlib_surface";
+else version(Windows)
+	extensions ~= "VK_KHR_win32_surface";
   debug extensions ~= VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
   return extensions;
